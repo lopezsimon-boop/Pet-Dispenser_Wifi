@@ -3,73 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dispensador de Mascotas 🐾</title>
+    <title>Dispensador IoT de Mascotas 🐾</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
             text-align: center;
-            margin-top: 40px;
-            background-color: #f0f0f0;
         }
+
+        /* Títulos */
         h1 {
-            color: #333;
+            font-size: 26px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #f1f1f1;
         }
-        p {
-            color: #666;
-            font-size: 16px;
-        }
-        .quote {
-            font-style: italic;
-            color: #555;
+
+        p.subtitle {
+            font-size: 14px;
+            color: #888;
             margin-bottom: 25px;
         }
-        button {
-            padding: 15px 25px;
+
+        .banner-msg {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 30px;
+            font-size: 13px;
+            color: #ffb74d;
+        }
+
+        /* Tarjeta principal con el borde brillante superior */
+        .card {
+            background-color: #1a1a1a;
+            border-radius: 15px;
+            padding: 30px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            border-top: 4px solid #00c853; /* Línea verde superior */
+            margin-bottom: 20px;
+        }
+
+        .section-title {
             font-size: 18px;
-            margin: 10px;
-            cursor: pointer;
+            color: #e0e0e0;
+            margin-bottom: 25px;
+        }
+
+        /* Filas de botones */
+        .btn-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 16px 10px;
+            font-size: 16px;
+            font-weight: bold;
             border: none;
-            border-radius: 5px;
-            background-color: #007bff;
+            border-radius: 50px; /* Estilo ovalado idéntico a la foto */
+            cursor: pointer;
             color: white;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-    </style>
-</head>
-<body>
-
-    <h1>Control de Dispensador 🐶🐱</h1>
-    <p>Cuida y alimenta a tu mascota desde cualquier lugar</p>
-    <p class="quote">"Amor en cada ración. Tu mascota feliz, estés donde estés." 🐾</p>
-
-    <div>
-        <button onclick="sendData('data1=0')">Comida</button>
-        <button onclick="sendData('data1=1')">Detener Comida</button>
-    </div>
-
-    <div>
-        <button onclick="sendData('data2=0')">Agua</button>
-        <button onclick="sendData('data2=1')">Detener Agua</button>
-    </div>
-
-    <script>
-        var client = new Paho.MQTT.Client("broker.hivemq.com", Number(8000), "web_" + parseInt(Math.random() * 100, 10));
-
-        client.connect({onSuccess:onConnect});
-
-        function onConnect() {
-            console.log("Conectado a MQTT");
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
 
-        function sendData(value) {
-            var message = new Paho.MQTT.Message(value);
-            message.destinationName = "pet_dispenser_lopezsimon/control";
-            client.send(message);
+        .btn:active {
+            transform: scale(0.96);
         }
-    </script>
 
-</body>
-</html>
+        /* Colores de los botones */
+        .btn-food {
+            background-color: #d84315; /* Naranja/Rojo oscuro */
+        }
+        .btn-food:hover {
+            background-color: #bf360c;
+        }
+
+        .btn-water {
+            background-color: #0277bd; /* Azul */
+        }
+        .btn-water:hover {
+            background-color: #01579b;
+        }
+
+        .btn-stop {
+            background-color: #424242; /* Gris */
+        }
+        .btn-stop:hover {
+            background-color: #212121;
+        }
+
+        /* Indicador de estado inferior */
+        .status-box {
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 1
