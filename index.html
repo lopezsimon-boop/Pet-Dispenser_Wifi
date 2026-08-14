@@ -1,124 +1,316 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dispensador IoT de Mascotas 🐾</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dispensador de Mascotas 🐾</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
 
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+    body {
+      background-color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
 
-        body {
-            background-color: #121212;
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
+    /* BARRA SUPERIOR SIMULADA DE NAVEGADOR */
+    .browser-bar {
+      background-color: #3b3b3b;
+      padding: 8px 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-        .container {
-            width: 100%;
-            max-width: 500px;
-            text-align: center;
-        }
+    .arrows {
+      color: #5d9cec;
+      font-weight: bold;
+      font-size: 18px;
+    }
 
-        /* Títulos */
-        h1 {
-            font-size: 26px;
-            font-weight: 600;
-            margin-bottom: 6px;
-            color: #f1f1f1;
-        }
+    .address-bar {
+      background-color: #5d9cec;
+      height: 22px;
+      flex-grow: 1;
+      border-radius: 12px;
+      position: relative;
+    }
 
-        p.subtitle {
-            font-size: 14px;
-            color: #888;
-            margin-bottom: 25px;
-        }
+    .address-bar::after {
+      content: '↻';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -55%);
+      color: white;
+      font-weight: bold;
+    }
 
-        .banner-msg {
-            background-color: #1e1e1e;
-            border: 1px solid #333;
-            border-radius: 10px;
-            padding: 12px;
-            margin-bottom: 30px;
-            font-size: 13px;
-            color: #ffb74d;
-        }
+    .browser-icons {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
 
-        /* Tarjeta principal con el borde brillante superior */
-        .card {
-            background-color: #1a1a1a;
-            border-radius: 15px;
-            padding: 30px 20px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-            border-top: 4px solid #00c853; /* Línea verde superior */
-            margin-bottom: 20px;
-        }
+    .icon-circle {
+      width: 22px;
+      height: 22px;
+      background-color: #5d9cec;
+      border-radius: 50%;
+    }
 
-        .section-title {
-            font-size: 18px;
-            color: #e0e0e0;
-            margin-bottom: 25px;
-        }
+    .dots {
+      color: #5d9cec;
+      font-weight: bold;
+      letter-spacing: 2px;
+    }
 
-        /* Filas de botones */
-        .btn-row {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
+    /* NAVBAR AZUL */
+    .navbar {
+      background-color: #8198b1;
+      padding: 10px 30px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 20px;
+    }
 
-        .btn {
-            flex: 1;
-            padding: 16px 10px;
-            font-size: 16px;
-            font-weight: bold;
-            border: none;
-            border-radius: 50px; /* Estilo ovalado idéntico a la foto */
-            cursor: pointer;
-            color: white;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-        }
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
 
-        .btn:active {
-            transform: scale(0.96);
-        }
+    .nav-item {
+      color: white;
+      text-decoration: none;
+      font-size: 18px;
+    }
 
-        /* Colores de los botones */
-        .btn-food {
-            background-color: #d84315; /* Naranja/Rojo oscuro */
-        }
-        .btn-food:hover {
-            background-color: #bf360c;
-        }
+    .nav-item.active {
+      border-left: 2px solid #2c3e50;
+      border-right: 2px solid #2c3e50;
+      padding: 0 15px;
+    }
 
-        .btn-water {
-            background-color: #0277bd; /* Azul */
-        }
-        .btn-water:hover {
-            background-color: #01579b;
-        }
+    .auth-btn {
+      background-color: #2e4053;
+      color: white;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+    }
 
-        .btn-stop {
-            background-color: #424242; /* Gris */
-        }
-        .btn-stop:hover {
-            background-color: #212121;
-        }
+    .user-icon {
+      width: 24px;
+      height: 24px;
+      background-color: #2e4053;
+      border-radius: 50%;
+    }
 
-        /* Indicador de estado inferior */
-        .status-box {
-            background-color: #1e1e1e;
-            border-radius: 10px;
-            padding: 12px;
-            font-size: 1
+    /* CONTENIDO PRINCIPAL */
+    .main-container {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    .pet-info-banner {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .pet-info-banner h1 {
+      color: #2c3e50;
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    .pet-info-banner p {
+      color: #555;
+      font-size: 14px;
+      font-style: italic;
+    }
+
+    .screen-box {
+      width: 100%;
+      max-width: 700px;
+      height: 300px;
+      background-color: #969696;
+      border: 1.5px solid #000;
+      margin-bottom: 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      text-align: center;
+      color: #ffffff;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+    }
+
+    .screen-box h2 {
+      font-size: 22px;
+      margin-bottom: 10px;
+      color: #ffffff;
+      text-shadow: 1px 1px 2px #000;
+    }
+
+    .screen-box p {
+      font-size: 15px;
+      margin-bottom: 15px;
+      color: #f0f0f0;
+      text-shadow: 1px 1px 2px #000;
+    }
+
+    .screen-box .status-text {
+      background-color: rgba(0, 0, 0, 0.4);
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 14px;
+      border: 1px solid #ffffff;
+    }
+
+    /* BOTONES DE CONTROL */
+    .controls-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 25px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .btn-control {
+      background-color: #5d9cec;
+      color: white;
+      border: 1px solid #3b73b9;
+      padding: 12px 25px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 0px 3px 5px rgba(0,0,0,0.2);
+      transition: all 0.2s ease;
+      min-width: 160px;
+    }
+
+    .btn-control:active {
+      transform: translateY(2px);
+      box-shadow: 0px 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .btn-control.active {
+      background-color: #27ae60;
+      border-color: #1e8449;
+    }
+
+    .btn-auto {
+      margin-bottom: -15px; /* Efecto desfasado como en tu prototipo */
+    }
+
+    /* FOOTER */
+    .footer {
+      background-color: #8198b1;
+      height: 60px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="browser-bar">
+    <div class="arrows">➔ ➔</div>
+    <div class="address-bar"></div>
+    <div class="browser-icons">
+      <div class="icon-circle"></div>
+      <div class="dots">⋮</div>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <div class="nav-links">
+      <a href="#" class="nav-item">Inicio</a>
+      <a href="#" class="nav-item active">Nosotros</a>
+      <a href="#" class="nav-item">Proyecto</a>
+      <a href="#" class="nav-item">Contacto</a>
+    </div>
+    <button class="auth-btn">Ingresar</button>
+    <button class="auth-btn">Registrarse</button>
+    <div class="user-icon"></div>
+  </div>
+
+  <div class="main-container">
+    
+    <div class="pet-info-banner">
+      <h1>PetFeeder IoT 🐶🐱</h1>
+      <p>"Amor en cada ración. Cuidando a tu mascota estés donde estés." 🐾</p>
+    </div>
+
+    <div class="screen-box" id="screenBox">
+      <h2>Panel de Control para Mascotas</h2>
+      <p>Selecciona una opción para activar la alimentación o el agua de tu peludito en tiempo real.</p>
+      <div class="status-text" id="statusMessage">Estado: Esperando acción... 🐾</div>
+    </div>
+
+    <div class="controls-container">
+      <button class="btn-control" id="btnAgua" onclick="toggleAgua()">Agua/Detener</button>
+      <button class="btn-control btn-auto" id="btnAuto" onclick="toggleAuto()">Automático</button>
+      <button class="btn-control" id="btnComida" onclick="toggleComida()">Comida/Detener</button>
+    </div>
+  </div>
+
+  <div class="footer"></div>
+
+  <script>
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+    const topicControl = "pet_dispenser_lopezsimon/control";
+
+    let estadoAgua = false;
+    let estadoComida = false;
+    let estadoAuto = false;
+
+    const statusMsg = document.getElementById('statusMessage');
+
+    client.on('connect', () => {
+      console.log('Conectado exitosamente al Broker MQTT global');
+      statusMsg.innerHTML = "Conectado al dispensador de la casa 🟢";
+    });
+
+    function toggleAgua() {
+      estadoAgua = !estadoAgua;
+      const btn = document.getElementById('btnAgua');
+      if (estadoAgua) {
+        client.publish(topicControl, 'data2=0'); // Encender Agua
+        btn.classList.add('active');
+        statusMsg.innerHTML = "Sirviendo Agua a tu mascota... 💧";
+      } else {
+        client.publish(topicControl, 'data2=1'); // Detener Agua
+        btn.classList.remove('active');
+        statusMsg.innerHTML = "Suministro de Agua detenido ⏹️";
+      }
+    }
+
+    function toggleComida() {
+      estadoComida = !estadoComida;
+      const btn = document.getElementById('btnComida');
+      if (estadoComida) {
+        client.publish(topicControl, 'data1=0'); // Encender Comida
+        btn.classList.add('active');
+        statusMsg.innerHTML = "Sirviendo Comida a tu mascota... 🍖";
+      } else {
+        client.publish(topicControl, 'data1=1'); // Detener Comida
+        btn.classList.remove('active');
+        status
