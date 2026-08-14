@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dispensador de Mascotas</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      background-color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* BARRA SUPERIOR SIMULADA DE NAVEGADOR */
+    .browser-bar {
+      background-color: #3b3b3b;
+      padding: 8px 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .arrows {
+      color: #5d9cec;
+      font-weight: bold;
+      font-size: 18px;
+    }
+
+    .address-bar {
+      background-color: #5d9cec;
+      height: 22px;
+      flex-grow: 1;
+      border-radius: 12px;
+      position: relative;
+    }
+
+    .address-bar::after {
+      content: '↻';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -55%);
+      color: white;
+      font-weight: bold;
+    }
+
+    .browser-icons {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .icon-circle {
+      width: 22px;
+      height: 22px;
+      background-color: #5d9cec;
+      border-radius: 50%;
+    }
+
+    .dots {
+      color: #5d9cec;
+      font-weight: bold;
+      letter-spacing: 2px;
+    }
+
+    /* NAVBAR AZUL */
+    .navbar {
+      background-color: #8198b1;
+      padding: 10px 30px;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .nav-item {
+      color: white;
+      text-decoration: none;
+      font-size: 18px;
+    }
+
+    .nav-item.active {
+      border-left: 2px solid #2c3e50;
+      border-right: 2px solid #2c3e50;
+      padding: 0 15px;
+    }
+
+    .auth-btn {
+      background-color: #2e4053;
+      color: white;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .user-icon {
+      width: 24px;
+      height: 24px;
+      background-color: #2e4053;
+      border-radius: 50%;
+    }
+
+    /* CONTENIDO PRINCIPAL */
+    .main-container {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px 20px;
+    }
+
+    .screen-box {
+      width: 100%;
+      max-width: 700px;
+      height: 300px;
+      background-color: #969696;
+      border: 1.5px solid #000;
+      margin-bottom: 30px;
+    }
+
+    /* BOTONES DE CONTROL */
+    .controls-container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 25px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .btn-control {
+      background-color: #5d9cec;
+      color: white;
+      border: 1px solid #3b73b9;
+      padding: 12px 25px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 0px 3px 5px rgba(0,0,0,0.2);
+      transition: all 0.2s ease;
+      min-width: 160px;
+    }
+
+    .btn-control:active {
+      transform: translateY(2px);
+      box-shadow: 0px 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .btn-control.active {
+      background-color: #27ae60;
+      border-color: #1e8449;
+    }
+
+    .btn-auto {
+      margin-bottom: -15px;
+    }
+
+    /* FOOTER */
+    .footer {
+      background-color: #8198b1;
+      height: 60px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="browser-bar">
+    <div class="arrows">➔ ➔</div>
+    <div class="address-bar"></div>
+    <div class="browser-icons">
+      <div class="icon-circle"></div>
+      <div class="dots">⋮</div>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <div class="nav-links">
+      <a href="#" class="nav-item">Inicio</a>
+      <a href="#" class="nav-item active">Nosotros</a>
+      <a href="#" class="nav-item">Proyecto</a>
+      <a href="#" class="nav-item">Contacto</a>
+    </div>
+    <button class="auth-btn">Ingresar</button>
+    <button class="auth-btn">Registrarse</button>
+    <div class="user-icon"></div>
+  </div>
+
+  <div class="main-container">
+    <div class="screen-box" id="screenBox"></div>
+
+    <div class="controls-container">
+      <button class="btn-control" id="btnAgua" onclick="toggleAgua()">Agua/Detener</button>
+      <button class="btn-control btn-auto" id="btnAuto" onclick="toggleAuto()">Automatico</button>
+      <button class="btn-control" id="btnComida" onclick="toggleComida()">Comida/Detener</button>
+    </div>
+  </div>
+
+  <div class="footer"></div>
+
+  <script>
+    const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+    const topicControl = "pet_dispenser_lopezsimon/control";
+
+    let estadoAgua = false;
+    let estadoComida = false;
+    let estadoAuto = false;
+
+    client.on('connect', () => {
+      console.log('Conectado exitosamente al Broker MQTT global');
+    });
+
+    function toggleAgua() {
+      estadoAgua = !estadoAgua;
+      const btn = document.getElementById('btnAgua');
+      if (estadoAgua) {
+        client.publish(topicControl, 'data2=0'); // Encender Agua
+        btn.classList.add('active');
+      } else {
+        client.publish(topicControl, 'data2=1'); // Detener Agua
+        btn.classList.remove('active');
+      }
+    }
+
+    function toggleComida() {
+      estadoComida = !estadoComida;
+      const btn = document.getElementById('btnComida');
+      if (estadoComida) {
+        client.publish(topicControl, 'data1=0'); // Encender Comida
+        btn.classList.add('active');
+      } else {
+        client.publish(topicControl, 'data1=1'); // Detener Comida
+        btn.classList.remove('active');
+      }
+    }
+
+    function toggleAuto() {
+      estadoAuto = !estadoAuto;
+      const btn = document.getElementById('btnAuto');
+      if (estadoAuto) {
+        client.publish(topicControl, 'auto=1');
+        btn.classList.add('active');
+      } else {
+        client.publish(topicControl, 'auto=0');
+        btn.classList.remove('active');
+      }
+    }
+  </script>
+
+</body>
+</html>
