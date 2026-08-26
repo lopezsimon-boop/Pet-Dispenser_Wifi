@@ -124,12 +124,12 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 30px 20px;
+      padding: 20px;
     }
 
     .pet-info-banner {
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 15px;
     }
 
     .pet-info-banner h1 {
@@ -144,44 +144,71 @@
       font-style: italic;
     }
 
+    /* RECUADRO GRIS / CONTENEDOR DE CÁMARA */
     .screen-box {
       width: 100%;
       max-width: 700px;
-      height: 300px;
+      height: 320px;
       background-color: #969696;
       border: 1.5px solid #000;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
+      position: relative;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      padding: 20px;
-      text-align: center;
+    }
+
+    #camStream {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .cam-overlay-status {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 0, 0, 0.65);
       color: #ffffff;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
-    }
-
-    .screen-box h2 {
-      font-size: 22px;
-      margin-bottom: 10px;
-      color: #ffffff;
-      text-shadow: 1px 1px 2px #000;
-    }
-
-    .screen-box p {
-      font-size: 15px;
-      margin-bottom: 15px;
-      color: #f0f0f0;
-      text-shadow: 1px 1px 2px #000;
-    }
-
-    .screen-box .status-text {
-      background-color: rgba(0, 0, 0, 0.4);
-      padding: 10px 20px;
-      border-radius: 20px;
+      padding: 6px 16px;
+      border-radius: 15px;
+      font-size: 13px;
       font-weight: bold;
+      border: 1px solid rgba(255,255,255,0.4);
+      z-index: 5;
+    }
+
+    .cam-setup-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .cam-setup-panel input {
+      padding: 8px 12px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      text-align: center;
       font-size: 14px;
-      border: 1px solid #ffffff;
+      width: 220px;
+    }
+
+    .cam-setup-panel button {
+      padding: 8px 18px;
+      background-color: #2c3e50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
     }
 
     /* BOTONES DE CONTROL */
@@ -218,7 +245,7 @@
     }
 
     .btn-auto {
-      margin-bottom: -15px; /* Efecto desfasado como en tu prototipo */
+      margin-bottom: -15px;
     }
 
     /* FOOTER */
@@ -259,10 +286,18 @@
       <p>"Amor en cada ración. Cuidando a tu mascota estés donde estés." 🐾</p>
     </div>
 
+    <!-- PANTALLA DE VIDEO DE CÁMARA ESP32-CAM -->
     <div class="screen-box" id="screenBox">
-      <h2>Panel de Control para Mascotas</h2>
-      <p>Selecciona una opción para activar la alimentación o el agua de tu peludito en tiempo real.</p>
-      <div class="status-text" id="statusMessage">Estado: Esperando acción... 🐾</div>
+      <img id="camStream" src="" alt="Transmisión en vivo">
+
+      <div class="cam-setup-panel" id="camSetup">
+        <h3 style="text-shadow: 1px 1px 2px #000;">Cámara del Dispensador 📹</h3>
+        <p style="font-size: 13px; text-shadow: 1px 1px 2px #000;">Ingresa la IP asignada a tu ESP32-CAM:</p>
+        <input type="text" id="ipInput" placeholder="Ej: 192.168.1.50">
+        <button onclick="conectarCamara()">Conectar Video</button>
+      </div>
+
+      <div class="cam-overlay-status" id="statusMessage">Estado: Esperando cámara... 🐾</div>
     </div>
 
     <div class="controls-container">
@@ -286,18 +321,30 @@
 
     client.on('connect', () => {
       console.log('Conectado exitosamente al Broker MQTT global');
-      statusMsg.innerHTML = "Conectado al dispensador de la casa 🟢";
     });
+
+    function conectarCamara() {
+      const ip = document.getElementById('ipInput').value.trim();
+      if(ip !== "") {
+        const img = document.getElementById('camStream');
+        img.src = "http://" + ip + ":81/stream";
+        img.style.display = "block";
+        document.getElementById('camSetup').style.display = "none";
+        statusMsg.innerHTML = "Transmisión en vivo activa 🟢";
+      } else {
+        alert("Ingresa una IP válida");
+      }
+    }
 
     function toggleAgua() {
       estadoAgua = !estadoAgua;
       const btn = document.getElementById('btnAgua');
       if (estadoAgua) {
-        client.publish(topicControl, 'data2=0'); // Encender Agua
+        client.publish(topicControl, 'data2=0');
         btn.classList.add('active');
         statusMsg.innerHTML = "Sirviendo Agua a tu mascota... 💧";
       } else {
-        client.publish(topicControl, 'data2=1'); // Detener Agua
+        client.publish(topicControl, 'data2=1');
         btn.classList.remove('active');
         statusMsg.innerHTML = "Suministro de Agua detenido ⏹️";
       }
@@ -307,10 +354,30 @@
       estadoComida = !estadoComida;
       const btn = document.getElementById('btnComida');
       if (estadoComida) {
-        client.publish(topicControl, 'data1=0'); // Encender Comida
+        client.publish(topicControl, 'data1=0');
         btn.classList.add('active');
         statusMsg.innerHTML = "Sirviendo Comida a tu mascota... 🍖";
       } else {
-        client.publish(topicControl, 'data1=1'); // Detener Comida
+        client.publish(topicControl, 'data1=1');
         btn.classList.remove('active');
-        status
+        statusMsg.innerHTML = "Dispensador de Comida detenido ⏹️";
+      }
+    }
+
+    function toggleAuto() {
+      estadoAuto = !estadoAuto;
+      const btn = document.getElementById('btnAuto');
+      if (estadoAuto) {
+        client.publish(topicControl, 'auto=1');
+        btn.classList.add('active');
+        statusMsg.innerHTML = "Modo Automático ACTIVADO ⚙️🐾";
+      } else {
+        client.publish(topicControl, 'auto=0');
+        btn.classList.remove('active');
+        statusMsg.innerHTML = "Modo Automático DESACTIVADO 🛑";
+      }
+    }
+  </script>
+
+</body>
+</html>
