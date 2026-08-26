@@ -6,8 +6,8 @@
 // ==========================================
 // 1. CREDENCIAES WI-FI Y MQTT
 // ==========================================
-const char* ssid = "TU_RED_2.4G";
-const char* password = "TU_CONTRASEÑA";
+const char* ssid = "Familia Lopez 2.4";
+const char* password = "3102665118";
 
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
