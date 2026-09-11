@@ -4,7 +4,7 @@
 #include "esp_http_server.h"
 
 // ==========================================
-// 1. CREDENCIAES WI-FI Y MQTT
+// 1. CREDENCIALES WI-FI Y MQTT
 // ==========================================
 const char* ssid = "Familia Lopez 2.4";
 const char* password = "3102665118";
@@ -31,7 +31,7 @@ const char* topic_sub = "pet_dispenser_lopezsimon/control";
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-// Pines de control para comida y agua en la ESP32-CAM
+// Pines de control para comida y agua
 const int pinComida = 14; 
 const int pinAgua   = 15; 
 
@@ -150,7 +150,10 @@ void setup() {
     return;
   }
 
+  // Conexión Wi-Fi optimizada
   WiFi.begin(ssid, password);
+  WiFi.setSleep(false); // Mantiene el Wi-Fi activo sin latencia para el video
+  
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -168,8 +171,12 @@ void setup() {
 
 void loop() {
   if (!client.connected()) {
-    if (client.connect("ESP32CAM_Client")) {
+    // Generar un ID único por dispositivo
+    String clientId = "ESP32CAM-" + String(WiFi.macAddress());
+    if (client.connect(clientId.c_str())) {
       client.subscribe(topic_sub);
+    } else {
+      delay(500);
     }
   }
   client.loop();
