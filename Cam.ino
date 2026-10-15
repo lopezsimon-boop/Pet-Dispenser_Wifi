@@ -1,8 +1,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-const char* ssid = "Familia Lopez 2.4";            // Tu red Wi-Fi de 2.4 GHz
-const char* password = "3128543820";    // Tu contraseña de Wi-Fi
+const char* ssid = "Familia Lopez 2.4";
+const char* password = "3102665118";
 
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
