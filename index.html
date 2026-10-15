@@ -219,6 +219,7 @@
       gap: 25px;
       width: 100%;
       max-width: 700px;
+      flex-wrap: wrap;
     }
 
     .btn-control {
@@ -242,6 +243,11 @@
     .btn-control.active {
       background-color: #27ae60;
       border-color: #1e8449;
+    }
+
+    .btn-control:disabled {
+      opacity: .5;
+      cursor: not-allowed;
     }
 
     .btn-auto {
@@ -301,9 +307,9 @@
     </div>
 
     <div class="controls-container">
-      <button class="btn-control" id="btnAgua" onclick="toggleAgua()">Agua/Detener</button>
-      <button class="btn-control btn-auto" id="btnAuto" onclick="toggleAuto()">Automático</button>
-      <button class="btn-control" id="btnComida" onclick="toggleComida()">Comida/Detener</button>
+      <button class="btn-control" id="btnAgua" onclick="toggleAgua()">Encender agua</button>
+      <button class="btn-control btn-auto" id="btnAuto" disabled title="El código original no incluye una rutina automática">Automático (pendiente)</button>
+      <button class="btn-control" id="btnComida" onclick="toggleComida()">Abrir puerta / Comida</button>
     </div>
   </div>
 
@@ -314,14 +320,63 @@
     const topicControl = "pet_dispenser_lopezsimon/control";
 
     let estadoAgua = false;
-    let estadoComida = false;
-    let estadoAuto = false;
-
+    let puerta = 'desconocida';
+    let equipoOnline = false;
+    let estadoRecibido = false;
     const statusMsg = document.getElementById('statusMessage');
+    const btnAgua = document.getElementById('btnAgua');
+    const btnComida = document.getElementById('btnComida');
+
+    function actualizarBotones() {
+      btnAgua.disabled = !client.connected || !equipoOnline || !estadoRecibido;
+      btnComida.disabled = btnAgua.disabled || puerta === 'abriendo' || puerta === 'cerrando';
+      btnAgua.textContent = estadoAgua ? 'Detener agua' : 'Encender agua';
+      btnAgua.classList.toggle('active', estadoAgua);
+      const abierta = puerta === 'abierta';
+      btnComida.classList.toggle('active', abierta || puerta === 'abriendo' || puerta === 'cerrando');
+      btnComida.textContent = puerta === 'desconocida' ? 'Cerrar / Referenciar puerta' :
+        puerta === 'abriendo' ? 'Abriendo puerta…' : puerta === 'cerrando' ? 'Cerrando puerta…' :
+        abierta ? 'Cerrar puerta / Detener' : 'Abrir puerta / Comida';
+    }
 
     client.on('connect', () => {
-      console.log('Conectado exitosamente al Broker MQTT global');
+      equipoOnline = false;
+      estadoRecibido = false;
+      actualizarBotones();
+      client.subscribe(['pet_dispenser_lopezsimon/estado', 'pet_dispenser_lopezsimon/conexion']);
+      client.publish(topicControl, 'estado?', {qos: 0, retain: false});
     });
+
+    client.on('message', (topic, payload) => {
+      if (topic.endsWith('/conexion')) {
+        equipoOnline = payload.toString() === 'online';
+        if (!equipoOnline) estadoRecibido = false;
+        else client.publish(topicControl, 'estado?', {qos: 0, retain: false});
+      } else if (topic.endsWith('/estado')) {
+        try {
+          const estado = JSON.parse(payload.toString());
+          estadoAgua = estado.agua === true;
+          puerta = estado.puerta;
+          estadoRecibido = true;
+        } catch (error) { return; }
+      }
+      statusMsg.textContent = equipoOnline ?
+        'Agua: ' + (estadoAgua ? 'encendida' : 'apagada') + ' · Puerta: ' + puerta + ' (estimada por tiempo)' :
+        'Dispensador desconectado';
+      actualizarBotones();
+    });
+
+    function desconectado() {
+      equipoOnline = false;
+      estadoRecibido = false;
+      statusMsg.textContent = 'Sin conexión con el dispensador';
+      actualizarBotones();
+    }
+
+    client.on('offline', desconectado);
+    client.on('close', desconectado);
+    client.on('error', desconectado);
+    actualizarBotones();
 
     function conectarCamara() {
       const ip = document.getElementById('ipInput').value.trim();
@@ -336,46 +391,18 @@
       }
     }
 
+    function enviarComando(comando) {
+      if (!client.connected || !equipoOnline || !estadoRecibido) return;
+      client.publish(topicControl, comando, {qos: 0, retain: false});
+    }
+
     function toggleAgua() {
-      estadoAgua = !estadoAgua;
-      const btn = document.getElementById('btnAgua');
-      if (estadoAgua) {
-        client.publish(topicControl, 'data2=0');
-        btn.classList.add('active');
-        statusMsg.innerHTML = "Sirviendo Agua a tu mascota... 💧";
-      } else {
-        client.publish(topicControl, 'data2=1');
-        btn.classList.remove('active');
-        statusMsg.innerHTML = "Suministro de Agua detenido ⏹️";
-      }
+      enviarComando(estadoAgua ? 'data2=1' : 'data2=0');
     }
 
     function toggleComida() {
-      estadoComida = !estadoComida;
-      const btn = document.getElementById('btnComida');
-      if (estadoComida) {
-        client.publish(topicControl, 'data1=0');
-        btn.classList.add('active');
-        statusMsg.innerHTML = "Sirviendo Comida a tu mascota... 🍖";
-      } else {
-        client.publish(topicControl, 'data1=1');
-        btn.classList.remove('active');
-        statusMsg.innerHTML = "Dispensador de Comida detenido ⏹️";
-      }
-    }
-
-    function toggleAuto() {
-      estadoAuto = !estadoAuto;
-      const btn = document.getElementById('btnAuto');
-      if (estadoAuto) {
-        client.publish(topicControl, 'auto=1');
-        btn.classList.add('active');
-        statusMsg.innerHTML = "Modo Automático ACTIVADO ⚙️🐾";
-      } else {
-        client.publish(topicControl, 'auto=0');
-        btn.classList.remove('active');
-        statusMsg.innerHTML = "Modo Automático DESACTIVADO 🛑";
-      }
+      if (puerta === 'abriendo' || puerta === 'cerrando') return;
+      enviarComando(puerta === 'cerrada' ? 'data1=0' : 'data1=1');
     }
   </script>
 
