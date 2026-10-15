@@ -1,209 +1,151 @@
-#include "esp_camera.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include "esp_http_server.h"
 
-// ==========================================
-// 1. CREDENCIALES WI-FI Y MQTT
-// ==========================================
-const char* ssid = "Galaxy A56 5G 3AA4";       // Cambia por el nombre de tu Wi-Fi 2.4 GHz
-const char* password = "matematicas";   // Cambia por la contraseña de tu Wi-Fi
+const char* ssid = "Familia Lopez 2.4";            // Tu red Wi-Fi de 2.4 GHz
+const char* password = "3128543820";    // Tu contraseña de Wi-Fi
 
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
 const char* topic_sub = "pet_dispenser_lopezsimon/control";
 
-// Definición de pines de la cámara (Modelo AI-THINKER)
-#define PWDN_GPIO_NUM     32
-#define RESET_GPIO_NUM    -1
-#define XCLK_GPIO_NUM      0
-#define SIOD_GPIO_NUM     26
-#define SIOC_GPIO_NUM     27
-#define Y9_GPIO_NUM       35
-#define Y8_GPIO_NUM       34
-#define Y7_GPIO_NUM       39
-#define Y6_GPIO_NUM       36
-#define Y5_GPIO_NUM       21
-#define Y4_GPIO_NUM       19
-#define Y3_GPIO_NUM       18
-#define Y2_GPIO_NUM        5
-#define VSYNC_GPIO_NUM    25
-#define HREF_GPIO_NUM     23
-#define PCLK_GPIO_NUM     22
+const char* topicEstado = "pet_dispenser_lopezsimon/estado";
+const char* topicConexion = "pet_dispenser_lopezsimon/conexion";
 
-// Pines de control para comida y agua
-const int pinComida = 14; 
-const int pinAgua   = 13; 
+// Asignación de pines en el ESP32
+const int pinMotorAbrir = 2;   // L293D pin 2 (1A)
+const int pinMotorCerrar = 4;  // L293D pin 7 (2A)
+const int pinAgua = 15;        // Driver de la bomba de agua
+const int pinLedAgua = 1;      // LED indicación agua
+const int pinLedComida = 14;   // LED indicación comida
 
-// Pines de indicación de estado Wi-Fi
-const int pinLedRojo  = 12; // Encendido = Desconectado / Buscando Wi-Fi
-const int pinLedVerde = 2;  // Encendido = Wi-Fi Conectado y Listo
+// Tiempos ajustables de movimiento en milisegundos (1000 = 1 segundo)
+const unsigned long TIEMPO_ABRIR_MS = 1000;
+const unsigned long TIEMPO_CERRAR_MS = 1000;
+const unsigned long PAUSA_INVERSION_MS = 100;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-httpd_handle_t stream_httpd = NULL;
 
-// Servidor de video MJPEG
-static esp_err_t stream_handler(httpd_req_t *req) {
-  camera_fb_t * fb = NULL;
-  esp_err_t res = ESP_OK;
-  size_t _jpg_buf_len = 0;
-  uint8_t * _jpg_buf = NULL;
-  char part_buf[64];
+enum Puerta { DESCONOCIDA, CERRADA, ABIERTA, ABRIENDO, CERRANDO };
+Puerta puerta = DESCONOCIDA;
 
-  res = httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=123456789000000000000987654321");
-  if (res != ESP_OK) return res;
+bool agua = false;
+bool movimientoPendiente = false;
+bool destinoAbierto = false;
+unsigned long inicioMovimiento = 0;
+unsigned long inicioPausa = 0;
+unsigned long ultimoIntento = 0;
 
-  while (true) {
-    fb = esp_camera_fb_get();
-    if (!fb) {
-      Serial.println("Error al capturar marco de cámara");
-      res = ESP_FAIL;
-    } else {
-      _jpg_buf_len = fb->len;
-      _jpg_buf = fb->buf;
-    }
-    if (res == ESP_OK) {
-      size_t hlen = snprintf((char *)part_buf, 64, "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n", _jpg_buf_len);
-      res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
-    }
-    if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
-    }
-    if (res == ESP_OK) {
-      res = httpd_resp_send_chunk(req, "\r\n--123456789000000000000987654321\r\n", 37);
-    }
-    if (fb) {
-      esp_camera_fb_return(fb);
-      fb = NULL;
-      _jpg_buf = NULL;
-    } else {
-      break;
-    }
-    if (res != ESP_OK) break;
-  }
-  return res;
+void detenerMotor() {
+  digitalWrite(pinMotorAbrir, LOW);
+  digitalWrite(pinMotorCerrar, LOW);
 }
 
-void startCameraServer() {
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = 81;
+void publicarEstado() {
+  if (!client.connected()) return;
+  const char* nombre = "desconocida";
+  if (movimientoPendiente) nombre = destinoAbierto ? "abriendo" : "cerrando";
+  else if (puerta == CERRADA) nombre = "cerrada";
+  else if (puerta == ABIERTA) nombre = "abierta";
+  else if (puerta == ABRIENDO) nombre = "abriendo";
+  else if (puerta == CERRANDO) nombre = "cerrando";
+  
+  String estado = String("{\"agua\":") + (agua ? "true" : "false") +
+                  ",\"puerta\":\"" + nombre + "\"}";
+  client.publish(topicEstado, estado.c_str(), true);
+}
 
-  httpd_uri_t stream_uri = {
-    .uri       = "/stream",
-    .method    = HTTP_GET,
-    .handler   = stream_handler,
-    .user_ctx  = NULL
-  };
+void controlarAgua(bool encender) {
+  agua = encender;
+  digitalWrite(pinAgua, agua ? HIGH : LOW);
+  digitalWrite(pinLedAgua, agua ? HIGH : LOW);
+  publicarEstado();
+}
 
-  if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-    httpd_register_uri_handler(stream_httpd, &stream_uri);
+void controlarPuerta(bool abrir) {
+  if (movimientoPendiente && destinoAbierto == abrir) return;
+  if (!movimientoPendiente &&
+      ((abrir && (puerta == ABIERTA || puerta == ABRIENDO)) ||
+       (!abrir && (puerta == CERRADA || puerta == CERRANDO)))) return;
+       
+  detenerMotor();
+  puerta = DESCONOCIDA;
+  destinoAbierto = abrir;
+  movimientoPendiente = true;
+  inicioPausa = millis();
+  digitalWrite(pinLedComida, HIGH);
+  publicarEstado();
+}
+
+void actualizarPuerta() {
+  if (movimientoPendiente) {
+    if (millis() - inicioPausa < PAUSA_INVERSION_MS) return;
+    movimientoPendiente = false;
+    digitalWrite(pinMotorAbrir, destinoAbierto ? HIGH : LOW);
+    digitalWrite(pinMotorCerrar, destinoAbierto ? LOW : HIGH);
+    puerta = destinoAbierto ? ABRIENDO : CERRANDO;
+    inicioMovimiento = millis();
+    publicarEstado();
+  }
+  
+  if (puerta != ABRIENDO && puerta != CERRANDO) return;
+  
+  unsigned long tiempo = puerta == ABRIENDO ? TIEMPO_ABRIR_MS : TIEMPO_CERRAR_MS;
+  if (millis() - inicioMovimiento >= tiempo) {
+    bool abierta = puerta == ABRIENDO;
+    detenerMotor();
+    puerta = abierta ? ABIERTA : CERRADA;
+    digitalWrite(pinLedComida, abierta ? HIGH : LOW);
+    publicarEstado();
   }
 }
 
-// Escucha comandos MQTT
 void callback(char* topic, byte* payload, unsigned int length) {
-  String mensaje = "";
-  for (int i = 0; i < length; i++) mensaje += (char)payload[i];
-
-  if (mensaje == "data1=0") digitalWrite(pinComida, HIGH);
-  else if (mensaje == "data1=1") digitalWrite(pinComida, LOW);
-
-  if (mensaje == "data2=0") digitalWrite(pinAgua, HIGH);
-  else if (mensaje == "data2=1") digitalWrite(pinAgua, LOW);
+  String mensaje;
+  for (unsigned int i = 0; i < length; i++) mensaje += (char)payload[i];
+  
+  if (mensaje == "data1=0") controlarPuerta(true);       // Orden de abrir
+  else if (mensaje == "data1=1") controlarPuerta(false);  // Orden de cerrar
+  else if (mensaje == "data2=0") controlarAgua(true);
+  else if (mensaje == "data2=1") controlarAgua(false);
+  else if (mensaje == "estado?") publicarEstado();
 }
 
 void setup() {
-  Serial.begin(115200);
-
-  // Configuración de salidas
-  pinMode(pinComida, OUTPUT);
-  pinMode(pinAgua, OUTPUT);
-  pinMode(pinLedRojo, OUTPUT);
-  pinMode(pinLedVerde, OUTPUT);
-
-  digitalWrite(pinComida, LOW);
-  digitalWrite(pinAgua, LOW);
-  
-  // Estado Inicial: Buscando Wi-Fi (Rojo ON, Verde OFF)
-  digitalWrite(pinLedRojo, HIGH);
-  digitalWrite(pinLedVerde, LOW);
-
-  // Configuración del sensor de cámara
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 10000000;
-  config.pixel_format = PIXFORMAT_JPEG;
-  
-  config.frame_size = FRAMESIZE_VGA;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Error al iniciar cámara: 0x%x", err);
-    return;
+  const int pines[] = {pinMotorAbrir, pinMotorCerrar, pinAgua, pinLedAgua, pinLedComida};
+  for (int pin : pines) {
+    digitalWrite(pin, LOW);
+    pinMode(pin, OUTPUT);
   }
-
-  // Inicio de conexión Wi-Fi
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid, password);
-  WiFi.setSleep(false);
-  
-  while (WiFi.status() != WL_CONNECTED) {
-    // Parpadeo suave del LED rojo mientras se conecta
-    digitalWrite(pinLedRojo, !digitalRead(pinLedRojo));
-    delay(500);
-    Serial.print(".");
-  }
-  
-  // Conexión exitosa
-  digitalWrite(pinLedRojo, LOW);   // Apaga el LED rojo
-  digitalWrite(pinLedVerde, HIGH); // Enciende el LED verde
-  
-  Serial.println("\nWi-Fi Conectado!");
-  Serial.print("IP de la ESP32-CAM: ");
-  Serial.println(WiFi.localIP());
-
-  startCameraServer();
-
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
+  client.setSocketTimeout(1);
 }
 
 void loop() {
-  // Comprobación constante de la conexión Wi-Fi
-  if (WiFi.status() == WL_CONNECTED) {
-    digitalWrite(pinLedVerde, HIGH);
-    digitalWrite(pinLedRojo, LOW);
-  } else {
-    digitalWrite(pinLedVerde, LOW);
-    digitalWrite(pinLedRojo, HIGH);
-  }
-
-  if (!client.connected()) {
-    String clientId = "ESP32CAM-" + String(WiFi.macAddress());
-    if (client.connect(clientId.c_str())) {
-      client.subscribe(topic_sub);
-    } else {
-      delay(500);
+  actualizarPuerta();
+  
+  if (WiFi.status() != WL_CONNECTED || !client.connected()) {
+    if (agua) controlarAgua(false);
+    if (movimientoPendiente || puerta == ABRIENDO || puerta == CERRANDO) {
+      detenerMotor();
+      movimientoPendiente = false;
+      puerta = DESCONOCIDA;
+      digitalWrite(pinLedComida, LOW);
     }
+    if (WiFi.status() == WL_CONNECTED && millis() - ultimoIntento >= 5000) {
+      ultimoIntento = millis();
+      String id = "PetFeeder-" + WiFi.macAddress();
+      if (client.connect(id.c_str(), topicConexion, 0, true, "offline")) {
+        client.subscribe(topic_sub);
+        client.publish(topicConexion, "online", true);
+        publicarEstado();
+      }
+    }
+    return;
   }
   client.loop();
 }
